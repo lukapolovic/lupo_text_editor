@@ -1,4 +1,5 @@
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+use crossterm::event::{self, Event, KeyCode};
 use std::io::{self, Read, Write};
 
 pub struct Editor {
@@ -14,14 +15,22 @@ impl Editor {
         enable_raw_mode()?;
         println!("Raw mode enabled! Press 'q' to quit.\r");
 
-        for b in io::stdin().bytes() {
-            let c = b? as char;
-            
-            print!("{}", c);
-            io::stdout().flush()?;
+        loop {
+            if let Event::Key(key_event) = event::read()? {
+                match key_event.code {
+                    KeyCode::Char('q') => {
+                        self.should_quit = true;
+                        break;
+                    }
+                    KeyCode::Char(c) => {
+                        print!("You pressed: {} \r\n", c);
+                        io::stdout().flush()?;
+                    }
+                    _ => {}
+                }
+            }
 
-            if c == 'q' {
-                self.should_quit = true;
+            if self.should_quit {
                 break;
             }
         }
