@@ -1,35 +1,11 @@
-use std::io::{self, Read, Write};
-use crossterm::terminal::{enable_raw_mode, disable_raw_mode};
+mod editor;
 
-fn main() {
-    enable_raw_mode().unwrap();
+use editor::Editor;
 
-    println!("Raw mode enabled! Press 'q' to quit.\r");
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut editor = Editor::new();
 
-    for b_result in io::stdin().bytes() {
-        match b_result {
-            Ok(b) => {
-                let c = b as char;
+    editor.run();
 
-                if c.is_control() {
-                    print!("Binary: {0:08b} ASCII: {0:#03}\r", b);
-                } else {
-                    print!("Binary: {0:08b} ASCII: {0:#03} Character: {1:#?}\r", b, c);
-                }
-
-                io::stdout().flush().unwrap();
-
-                if c == 'q' {
-                    break;
-                }
-            }
-
-            Err(err) => {
-                println!("\nAn error occurred: {}", err);
-                break;
-            }
-        }
-    }
-
-    disable_raw_mode().unwrap();
+    Ok(())
 }
