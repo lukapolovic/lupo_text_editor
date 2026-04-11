@@ -1,8 +1,21 @@
-use crossterm::cursor::MoveTo;
-use crossterm::execute;
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size};
+use crossterm::cursor::{Hide, Show, MoveTo};
+use crossterm::queue;
+use crossterm::style::Print;
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearType};
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use std::io::{self, Write};
+
+#[derive(Debug, Copy, Clone)]
+pub struct Size {
+    pub width: u16,
+    pub height: u16,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct Position {
+    pub x: u16,
+    pub y: u16,
+}
 
 pub struct Editor {
     pub should_quit: bool,
@@ -25,7 +38,7 @@ impl Editor {
                         break;
                     }
                     KeyCode::Char(c) => {
-                        print!("You pressed: {c} \r\n");
+                        queue!(io::stdout(), Print(format!("You pressed: {c} \r\n")))?;
                         io::stdout().flush()?;
                     }
                     _ => {}
@@ -42,14 +55,16 @@ impl Editor {
     }
 
     pub fn draw_rows(&self) -> io::Result<()> {
-        let (_terminal_width, terminal_height) = size()?;
+        let (width, height) = size()?;
+        let terminal_size = Size { width: width, height: height };
 
-        for row in 0..terminal_height {
-            execute!(io::stdout(), MoveTo(0, row))?;
-            print!("~");
+        queue!(io::stdout(), Hide)?;
+
+        for row in 0..terminal_size.height {
+            queue!(io::stdout(), MoveTo(0, row), Clear(ClearType::CurrentLine), Print("~"))?;
         }
 
-        execute!(io::stdout(), MoveTo(0, 0))?;
+        queue!(io::stdout(), MoveTo(0, 0), Show)?;
         io::stdout().flush()?;
 
         Ok(())
