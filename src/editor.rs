@@ -5,7 +5,6 @@ use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearT
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 
 use std::io::{self, Write};
-use std::cmp::max;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Size {
@@ -17,6 +16,35 @@ pub struct Size {
 pub struct Position {
     pub x: u16,
     pub y: u16,
+}
+
+pub struct View;
+
+impl View {
+    pub fn render(&self, terminal_size: Size, lines: Vec<&str>) -> io::Result<()> {
+        queue!(io::stdout(), Hide)?;
+
+        for row in 0..terminal_size.height {
+            queue!(io::stdout(), MoveTo(0, row), Print("~"));
+        }
+
+        for (index, line) in lines.iter().enumerate() {
+            let y = index as u16;
+
+            if y < terminal_size.height {
+                queue!(
+                    io::stdout(),
+                    MoveTo(0, y),
+                    Clear(ClearType::CurrentLine),
+                    Print(*line)
+                )?;
+            }
+        }
+
+        queue!(io::stdout(), MoveTo(0, 0), Show)?;
+        io::stdout().flush()?;
+        Ok(())
+    }
 }
 
 pub struct Editor {
@@ -35,6 +63,12 @@ impl Editor {
     pub fn run(&mut self) -> io::Result<()> {
         enable_raw_mode()?;
         self.draw_welcome_msg()?;
+
+        let view = View;
+        let lines = vec!["Hello, World!", "Line 2", "Line 3"];
+        let (width, height) = size()?;
+        let terminal_size = Size { width, height };
+        view.render(terminal_size, lines);
 
         loop {
             if let Event::Key(key_event) = event::read()? {
@@ -92,22 +126,6 @@ impl Editor {
         Ok(())
     }
 
-    pub fn draw_rows(&self) -> io::Result<()> {
-        let (width, height) = size()?;
-        let terminal_size = Size { width: width, height: height };
-
-        queue!(io::stdout(), Hide)?;
-
-        for row in 0..terminal_size.height {
-            queue!(io::stdout(), MoveTo(0, row), Clear(ClearType::CurrentLine), Print("~"))?;
-        }
-
-        queue!(io::stdout(), MoveTo(0, 0), Show)?;
-        io::stdout().flush()?;
-
-        Ok(())
-    }
-
     pub fn draw_welcome_msg(&self) -> io::Result<()> {
         let message = "lupo_1.0.";
         let message_length = message.len() as u16;
@@ -119,7 +137,7 @@ impl Editor {
 
         let welcome_msg_coords = Size { width: x_pos, height: y_pos };
 
-        queue!(io::stdout(), MoveTo(welcome_msg_coords.width, welcome_msg_coords.height), Print(message), MoveTo(0, 0))?;
+        queue!(io::stdout(), Clear(ClearType::All), MoveTo(welcome_msg_coords.width, welcome_msg_coords.height), Print(message), MoveTo(0, 0))?;
         io::stdout().flush()?;
 
         Ok(())
