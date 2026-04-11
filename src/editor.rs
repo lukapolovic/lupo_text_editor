@@ -65,12 +65,14 @@ impl View {
             for (index, line) in self.buffer.lines.iter().enumerate() {
                 let y = index as u16;
                 if y < terminal_size.height {
-                    queue!(
-                        io::stdout(),
-                        MoveTo(0, y),
-                        Clear(ClearType::CurrentLine),
-                        Print(line)
-                    )?;
+                    if let Some(visible_line) = line.get(0..terminal_size.width as usize) {
+                        queue!(
+                            io::stdout(),
+                            MoveTo(0, y),
+                            Clear(ClearType::CurrentLine),
+                            Print(visible_line)
+                        )?;
+                    }
                 }
             }
         }
