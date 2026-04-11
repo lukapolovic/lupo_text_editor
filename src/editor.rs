@@ -18,26 +18,34 @@ pub struct Position {
     pub y: u16,
 }
 
-pub struct View;
+pub struct Buffer {
+    pub lines: Vec<String>,
+}
+
+impl Buffer {
+    pub fn new() -> Self {
+        Self {
+            lines: vec!["Hello World".to_string()],
+        }
+    }
+}
+
+pub struct View {
+    pub buffer: Buffer,
+}
 
 impl View {
-    pub fn render(&self, terminal_size: Size, lines: Vec<&str>) -> io::Result<()> {
+    pub fn render(&self, terminal_size: Size) -> io::Result<()> {
         queue!(io::stdout(), Hide)?;
 
-        for row in 0..terminal_size.height {
-            queue!(io::stdout(), MoveTo(0, row), Print("~"));
-        }
-
-        for (index, line) in lines.iter().enumerate() {
-            let y = index as u16;
-
-            if y < terminal_size.height {
-                queue!(
-                    io::stdout(),
-                    MoveTo(0, y),
-                    Clear(ClearType::CurrentLine),
-                    Print(*line)
-                )?;
+        for row in 0..(terminal_size.height - 1) {
+            match self.buffer.lines.get(row as usize) {
+                Some(line_content) => {
+                    queue!(io::stdout(), MoveTo(0, row), Clear(ClearType::CurrentLine), Print(line_content))?;
+                }
+                None => {
+                    queue!(io::stdout(), MoveTo(0, row), Clear(ClearType::CurrentLine), Print("~"));
+                }
             }
         }
 
@@ -64,11 +72,12 @@ impl Editor {
         enable_raw_mode()?;
         self.draw_welcome_msg()?;
 
-        let view = View;
+        let mut buffer = Buffer::new();
+        let view = View { buffer: buffer};
         let lines = vec!["Hello, World!", "Line 2", "Line 3"];
         let (width, height) = size()?;
         let terminal_size = Size { width, height };
-        view.render(terminal_size, lines);
+        view.render(terminal_size);
 
         loop {
             if let Event::Key(key_event) = event::read()? {
