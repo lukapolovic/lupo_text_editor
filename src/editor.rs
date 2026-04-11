@@ -1,4 +1,6 @@
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+use crossterm::cursor::MoveTo;
+use crossterm::execute;
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size};
 use crossterm::event::{self, Event, KeyCode};
 use std::io::{self, Write};
 
@@ -36,6 +38,20 @@ impl Editor {
         }
 
         disable_raw_mode()?;
+        Ok(())
+    }
+
+    pub fn draw_rows(&self) -> io::Result<()> {
+        let (_terminal_width, terminal_height) = size()?;
+
+        for row in 0..terminal_height {
+            execute!(io::stdout(), MoveTo(0, row))?;
+            print!("~");
+        }
+
+        execute!(io::stdout(), MoveTo(0, 0))?;
+        io::stdout().flush()?;
+
         Ok(())
     }
 }
