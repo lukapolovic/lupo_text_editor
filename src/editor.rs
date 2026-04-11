@@ -147,7 +147,7 @@ impl Editor {
                         io::stdout().flush()?;
                     }
                     KeyCode::Down => {
-                        let (width, height) = size()?;
+                        let (_width, height) = size()?;
                         if self.cursor_position.y < height - 1 {
                             self.cursor_position.y += 1;
                         }
@@ -162,7 +162,7 @@ impl Editor {
                         io::stdout().flush()?;
                     }
                     KeyCode::Right => {
-                        let (width, height) = size()?;
+                        let (width, _height) = size()?;
                         if self.cursor_position.x < width - 1 {
                             self.cursor_position.x += 1;
                         }
