@@ -3,7 +3,9 @@ use crossterm::queue;
 use crossterm::style::Print;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearType};
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+
 use std::io::{self, Write};
+use std::cmp::max;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Size {
@@ -19,11 +21,15 @@ pub struct Position {
 
 pub struct Editor {
     pub should_quit: bool,
+    pub cursor_position: Position,
 }
 
 impl Editor {
     pub fn new() -> Self {
-        Self {should_quit: false}
+        Self {
+            should_quit: false, 
+            cursor_position: { Position {x: 0, y: 0} },
+        }
     }
 
     pub fn run(&mut self) -> io::Result<()> {
@@ -39,6 +45,38 @@ impl Editor {
                     }
                     KeyCode::Char(c) => {
                         queue!(io::stdout(), Print(format!("You pressed: {c} \r\n")))?;
+                        io::stdout().flush()?;
+                        self.cursor_position.y += 1;
+                        self.cursor_position.x = 0;
+                    }
+                    KeyCode::Up => {
+                        if self.cursor_position.y > 0 {
+                            self.cursor_position.y -= 1;
+                        }
+                        queue!(io::stdout(), MoveTo(self.cursor_position.x, self.cursor_position.y))?;
+                        io::stdout().flush()?;
+                    }
+                    KeyCode::Down => {
+                        let (width, height) = size()?;
+                        if self.cursor_position.y < height - 1 {
+                            self.cursor_position.y += 1;
+                        }
+                        queue!(io::stdout(), MoveTo(self.cursor_position.x, self.cursor_position.y))?;
+                        io::stdout().flush()?;
+                    }
+                    KeyCode::Left => {
+                        if self.cursor_position.x > 0 {
+                            self.cursor_position.x -= 1;
+                        }
+                        queue!(io::stdout(), MoveTo(self.cursor_position.x, self.cursor_position.y))?;
+                        io::stdout().flush()?;
+                    }
+                    KeyCode::Right => {
+                        let (width, height) = size()?;
+                        if self.cursor_position.x < width - 1 {
+                            self.cursor_position.x += 1;
+                        }
+                        queue!(io::stdout(), MoveTo(self.cursor_position.x, self.cursor_position.y))?;
                         io::stdout().flush()?;
                     }
                     _ => {}
