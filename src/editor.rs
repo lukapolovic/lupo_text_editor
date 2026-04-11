@@ -25,8 +25,20 @@ pub struct Buffer {
 impl Buffer {
     pub fn new() -> Self {
         Self {
-            lines: vec!["Hello World".to_string()],
+            lines: Vec::new(),
         }
+    }
+
+    pub fn load(&mut self, filename: &str) -> io::Result<()> {
+        let file_contents = std::fs::read_to_string(filename)?;
+
+        self.lines = file_contents.lines().map(|s| s.to_string()).collect();
+
+        Ok(())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lines.is_empty()
     }
 }
 
@@ -38,19 +50,48 @@ impl View {
     pub fn render(&self, terminal_size: Size) -> io::Result<()> {
         queue!(io::stdout(), Hide)?;
 
-        for row in 0..(terminal_size.height - 1) {
-            match self.buffer.lines.get(row as usize) {
-                Some(line_content) => {
-                    queue!(io::stdout(), MoveTo(0, row), Clear(ClearType::CurrentLine), Print(line_content))?;
-                }
-                None => {
-                    queue!(io::stdout(), MoveTo(0, row), Clear(ClearType::CurrentLine), Print("~"));
+        for row in 0..terminal_size.height {
+            queue!(
+                io::stdout(),
+                MoveTo(0, row),
+                Clear(ClearType::CurrentLine),
+                Print("~")
+            )?;
+        }
+
+        if self.buffer.is_empty() {
+            self.draw_welcome_msg(terminal_size)?;
+        } else {
+            for (index, line) in self.buffer.lines.iter().enumerate() {
+                let y = index as u16;
+                if y < terminal_size.height {
+                    queue!(
+                        io::stdout(),
+                        MoveTo(0, y),
+                        Clear(ClearType::CurrentLine),
+                        Print(line)
+                    )?;
                 }
             }
         }
 
         queue!(io::stdout(), MoveTo(0, 0), Show)?;
         io::stdout().flush()?;
+        Ok(())
+    }
+
+    pub fn draw_welcome_msg(&self, terminal_size: Size) -> io::Result<()> {
+        let message = "Lupo - Lightweight Rust Text Editor (v1.0)";
+        let message_length = message.len() as u16;
+
+        let y_pos = terminal_size.height - 1;
+        let x_pos = (terminal_size.width / 2) - (message_length / 2);
+
+        let welcome_msg_coords = Size { width: x_pos, height: y_pos };
+
+        queue!(io::stdout(), MoveTo(welcome_msg_coords.width, welcome_msg_coords.height), Print(message), MoveTo(0, 0))?;
+        io::stdout().flush()?;
+
         Ok(())
     }
 }
@@ -70,11 +111,17 @@ impl Editor {
 
     pub fn run(&mut self) -> io::Result<()> {
         enable_raw_mode()?;
-        self.draw_welcome_msg()?;
 
-        let mut buffer = Buffer::new();
-        let view = View { buffer: buffer};
-        let lines = vec!["Hello, World!", "Line 2", "Line 3"];
+        let args: Vec<String> = std::env::args().collect();
+        let mut view = View { buffer: Buffer::new() };
+
+        if let Some(filename) = args.get(1) {
+            if let Err(e) = view.buffer.load(filename) {
+                eprintln!("Error loading file: {}", e);
+                return Err(e);
+            }
+        }
+
         let (width, height) = size()?;
         let terminal_size = Size { width, height };
         view.render(terminal_size);
@@ -132,23 +179,6 @@ impl Editor {
         }
 
         disable_raw_mode()?;
-        Ok(())
-    }
-
-    pub fn draw_welcome_msg(&self) -> io::Result<()> {
-        let message = "lupo_1.0.";
-        let message_length = message.len() as u16;
-        let (width, height) = size()?;
-        let terminal_size = Size { width: width, height: height };
-
-        let y_pos = terminal_size.height - 1;
-        let x_pos = (terminal_size.width / 2) - (message_length / 2);
-
-        let welcome_msg_coords = Size { width: x_pos, height: y_pos };
-
-        queue!(io::stdout(), Clear(ClearType::All), MoveTo(welcome_msg_coords.width, welcome_msg_coords.height), Print(message), MoveTo(0, 0))?;
-        io::stdout().flush()?;
-
         Ok(())
     }
 }
