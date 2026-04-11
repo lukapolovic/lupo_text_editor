@@ -1,6 +1,6 @@
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use crossterm::event::{self, Event, KeyCode};
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 
 pub struct Editor {
     pub should_quit: bool,
@@ -23,7 +23,7 @@ impl Editor {
                         break;
                     }
                     KeyCode::Char(c) => {
-                        print!("You pressed: {} \r\n", c);
+                        print!("You pressed: {c} \r\n");
                         io::stdout().flush()?;
                     }
                     _ => {}
