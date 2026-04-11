@@ -1,7 +1,7 @@
 use crossterm::cursor::MoveTo;
 use crossterm::execute;
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size};
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use std::io::{self, Write};
 
 pub struct Editor {
@@ -15,12 +15,12 @@ impl Editor {
 
     pub fn run(&mut self) -> io::Result<()> {
         enable_raw_mode()?;
-        println!("Raw mode enabled! Press 'q' to quit.\r");
+        println!("Raw mode enabled! Press 'CTRL + Q' to quit.\r");
 
         loop {
             if let Event::Key(key_event) = event::read()? {
                 match key_event.code {
-                    KeyCode::Char('q') => {
+                    KeyCode::Char('q') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
                         self.should_quit = true;
                         break;
                     }
