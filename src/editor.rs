@@ -28,7 +28,7 @@ impl Editor {
 
     pub fn run(&mut self) -> io::Result<()> {
         enable_raw_mode()?;
-        println!("Raw mode enabled! Press 'CTRL + Q' to quit.\r");
+        self.draw_welcome_msg()?;
 
         loop {
             if let Event::Key(key_event) = event::read()? {
@@ -65,6 +65,23 @@ impl Editor {
         }
 
         queue!(io::stdout(), MoveTo(0, 0), Show)?;
+        io::stdout().flush()?;
+
+        Ok(())
+    }
+
+    pub fn draw_welcome_msg(&self) -> io::Result<()> {
+        let message = "lupo_1.0.";
+        let message_length = message.len() as u16;
+        let (width, height) = size()?;
+        let terminal_size = Size { width: width, height: height };
+
+        let y_pos = terminal_size.height - 1;
+        let x_pos = (terminal_size.width / 2) - (message_length / 2);
+
+        let welcome_msg_coords = Size { width: x_pos, height: y_pos };
+
+        queue!(io::stdout(), MoveTo(welcome_msg_coords.width, welcome_msg_coords.height), Print(message), MoveTo(0, 0))?;
         io::stdout().flush()?;
 
         Ok(())
