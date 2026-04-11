@@ -18,8 +18,9 @@ pub struct Position {
     pub y: u16,
 }
 
+#[derive(Default)]
 pub struct Buffer {
-    pub lines: Vec<String>,
+    pub lines: Vec<Vec<char>>,
 }
 
 impl Buffer {
@@ -31,9 +32,10 @@ impl Buffer {
 
     pub fn load(&mut self, filename: &str) -> io::Result<()> {
         let file_contents = std::fs::read_to_string(filename)?;
-
-        self.lines = file_contents.lines().map(|s| s.to_string()).collect();
-
+        self.lines = file_contents
+            .lines()
+            .map(|s| s.chars().collect())
+            .collect();
         Ok(())
     }
 
@@ -42,21 +44,25 @@ impl Buffer {
     }
 }
 
+#[derive(Default)]
 pub struct View {
     pub buffer: Buffer,
+    pub needs_redraw: bool,
 }
 
 impl View {
-    pub fn render(&self, terminal_size: Size) -> io::Result<()> {
-        queue!(io::stdout(), Hide)?;
+    pub fn new() -> Self {
+        Self {
+            buffer: Buffer::new(),
+            needs_redraw: true,
+        }
+    }
+
+    pub fn render(&mut self, terminal_size: Size, cursor_position: Position) -> io::Result<()> {
+        queue!(io::stdout(), Clear(ClearType::All), Hide)?;
 
         for row in 0..terminal_size.height {
-            queue!(
-                io::stdout(),
-                MoveTo(0, row),
-                Clear(ClearType::CurrentLine),
-                Print("~")
-            )?;
+            queue!(io::stdout(), MoveTo(0, row), Print("~"))?;
         }
 
         if self.buffer.is_empty() {
@@ -65,35 +71,29 @@ impl View {
             for (index, line) in self.buffer.lines.iter().enumerate() {
                 let y = index as u16;
                 if y < terminal_size.height {
-                    if let Some(visible_line) = line.get(0..terminal_size.width as usize) {
-                        queue!(
-                            io::stdout(),
-                            MoveTo(0, y),
-                            Clear(ClearType::CurrentLine),
-                            Print(visible_line)
-                        )?;
-                    }
+                    let visible_chars: String = line.iter().take(terminal_size.width as usize).collect();
+                    queue!(
+                        io::stdout(),
+                        MoveTo(0, y),
+                        Print(visible_chars)
+                    )?;
                 }
             }
         }
 
-        queue!(io::stdout(), MoveTo(0, 0), Show)?;
+        queue!(io::stdout(), MoveTo(cursor_position.x, cursor_position.y), Show)?;
         io::stdout().flush()?;
+        self.needs_redraw = false;
         Ok(())
     }
 
     pub fn draw_welcome_msg(&self, terminal_size: Size) -> io::Result<()> {
         let message = "Lupo - Lightweight Rust Text Editor (v1.0)";
-        let message_length = message.len() as u16;
-
+        let message_len = message.chars().count() as u16;
         let y_pos = terminal_size.height - 1;
-        let x_pos = (terminal_size.width / 2) - (message_length / 2);
-
-        let welcome_msg_coords = Size { width: x_pos, height: y_pos };
-
-        queue!(io::stdout(), MoveTo(welcome_msg_coords.width, welcome_msg_coords.height), Print(message), MoveTo(0, 0))?;
+        let x_pos = (terminal_size.width / 2).saturating_sub(message_len / 2);
+        queue!(io::stdout(), MoveTo(x_pos, y_pos), Print(message))?;
         io::stdout().flush()?;
-
         Ok(())
     }
 }
@@ -106,16 +106,15 @@ pub struct Editor {
 impl Editor {
     pub fn new() -> Self {
         Self {
-            should_quit: false, 
-            cursor_position: { Position {x: 0, y: 0} },
+            should_quit: false,
+            cursor_position: Position { x: 0, y: 0 },
         }
     }
 
     pub fn run(&mut self) -> io::Result<()> {
         enable_raw_mode()?;
-
         let args: Vec<String> = std::env::args().collect();
-        let mut view = View { buffer: Buffer::new() };
+        let mut view = View::new();
 
         if let Some(filename) = args.get(1) {
             if let Err(e) = view.buffer.load(filename) {
@@ -126,53 +125,80 @@ impl Editor {
 
         let (width, height) = size()?;
         let terminal_size = Size { width, height };
-        view.render(terminal_size);
+        view.render(terminal_size, self.cursor_position)?;
 
         loop {
             if let Event::Key(key_event) = event::read()? {
+                if !view.buffer.lines.is_empty() {
+                    let line_len = view.buffer.lines[self.cursor_position.y as usize].len() as u16;
+                    if self.cursor_position.x > line_len {
+                        self.cursor_position.x = line_len;
+                    }
+                }
+
                 match key_event.code {
                     KeyCode::Char('q') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
                         self.should_quit = true;
                         break;
                     }
                     KeyCode::Char(c) => {
-                        queue!(io::stdout(), Print(format!("You pressed: {c} \r\n")))?;
-                        io::stdout().flush()?;
+                        if view.buffer.lines.is_empty() {
+                            view.buffer.lines.push(Vec::new());
+                        }
+                        let line = &mut view.buffer.lines[self.cursor_position.y as usize];
+                        line.insert(self.cursor_position.x as usize, c);
+                        self.cursor_position.x += 1;
+                        view.needs_redraw = true;
+                    }
+                    KeyCode::Enter => {
+                        let current_line = view.buffer.lines[self.cursor_position.y as usize].clone();
+                        let split_at = self.cursor_position.x as usize;
+                        let remaining_text: Vec<char> = current_line.into_iter().skip(split_at).collect();
+                        view.buffer.lines[self.cursor_position.y as usize].truncate(split_at);
+                        view.buffer.lines.push(remaining_text);
                         self.cursor_position.y += 1;
                         self.cursor_position.x = 0;
+                        view.needs_redraw = true;
                     }
                     KeyCode::Up => {
                         if self.cursor_position.y > 0 {
                             self.cursor_position.y -= 1;
+                            let line_len = view.buffer.lines[self.cursor_position.y as usize].len() as u16;
+                            if self.cursor_position.x > line_len {
+                                self.cursor_position.x = line_len;
+                            }
                         }
-                        queue!(io::stdout(), MoveTo(self.cursor_position.x, self.cursor_position.y))?;
-                        io::stdout().flush()?;
+                        view.needs_redraw = true;
                     }
                     KeyCode::Down => {
-                        let (_width, height) = size()?;
-                        if self.cursor_position.y < height - 1 {
+                        if self.cursor_position.y < (view.buffer.lines.len() as u16).saturating_sub(1) {
                             self.cursor_position.y += 1;
+                            let line_len = view.buffer.lines[self.cursor_position.y as usize].len() as u16;
+                            if self.cursor_position.x > line_len {
+                                self.cursor_position.x = line_len;
+                            }
                         }
-                        queue!(io::stdout(), MoveTo(self.cursor_position.x, self.cursor_position.y))?;
-                        io::stdout().flush()?;
+                        view.needs_redraw = true;
                     }
                     KeyCode::Left => {
                         if self.cursor_position.x > 0 {
                             self.cursor_position.x -= 1;
                         }
-                        queue!(io::stdout(), MoveTo(self.cursor_position.x, self.cursor_position.y))?;
-                        io::stdout().flush()?;
+                        view.needs_redraw = true;
                     }
                     KeyCode::Right => {
-                        let (width, _height) = size()?;
-                        if self.cursor_position.x < width - 1 {
+                        let line_len = view.buffer.lines[self.cursor_position.y as usize].len() as u16;
+                        if self.cursor_position.x < line_len {
                             self.cursor_position.x += 1;
                         }
-                        queue!(io::stdout(), MoveTo(self.cursor_position.x, self.cursor_position.y))?;
-                        io::stdout().flush()?;
+                        view.needs_redraw = true;
                     }
                     _ => {}
                 }
+            }
+
+            if view.needs_redraw {
+                view.render(terminal_size, self.cursor_position)?;
             }
 
             if self.should_quit {
