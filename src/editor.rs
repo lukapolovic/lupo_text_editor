@@ -42,6 +42,29 @@ impl Buffer {
     pub fn is_empty(&self) -> bool {
         self.lines.is_empty()
     }
+
+    //TODO get_byte_index
+    /*
+    Purpose: Translates a character position (e.g., "the 3rd character") into the exact byte where that character starts. This is
+    what we'll use when we actually want to insert or truncate.
+
+    Logic:
+    1. Take line_idx: usize and char_idx: usize.
+    2. Get the line: let line = &self.lines[line_idx];
+    3. Use the iterator .char_indices() which returns (byte_index, character).
+    4. Use .nth(char_idx) to skip to your target character.
+    5. If it exists, return the byte_index.
+    6. If it doesn't (you're at the end of the line), return the full line.len().*/
+
+    //TODO get_char_count
+    /*
+    Purpose: Tells us how many characters are in a line. We need this so the Right arrow key knows when to stop. (The current
+    line.len() tells us bytes, which is why it's currently buggy!)
+
+    Logic:
+    1. Take line_idx: usize.
+    2. Get the line: let line = &self.lines[line_idx];
+    3. Return the count of characters: line.chars().count() as u16.*/
 }
 
 #[derive(Default)]
