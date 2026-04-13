@@ -71,11 +71,12 @@ impl View {
             for (index, line) in self.buffer.lines.iter().enumerate() {
                 let y = index as u16;
                 if y < terminal_size.height {
-                    let visible_chars: String = line.chars().take(terminal_size.width as usize).collect();
+                    let end = std::cmp::min(line.len(), terminal_size.width as usize);
+                    let slice = &line[0..end];
                     queue!(
                         io::stdout(),
                         MoveTo(0, y),
-                        Print(visible_chars)
+                        Print(slice)
                     )?;
                 }
             }
