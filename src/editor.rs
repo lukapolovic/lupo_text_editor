@@ -20,13 +20,13 @@ pub struct Position {
 
 #[derive(Default)]
 pub struct Buffer {
-    pub lines: Vec<Vec<char>>,
+    pub lines: Vec<String>,
 }
 
 impl Buffer {
     pub fn new() -> Self {
         Self {
-            lines: Vec::new(),
+            lines: Vec::<String>::new(),
         }
     }
 
@@ -34,7 +34,7 @@ impl Buffer {
         let file_contents = std::fs::read_to_string(filename)?;
         self.lines = file_contents
             .lines()
-            .map(|s| s.chars().collect())
+            .map(|s| s.to_string())
             .collect();
         Ok(())
     }
@@ -71,7 +71,7 @@ impl View {
             for (index, line) in self.buffer.lines.iter().enumerate() {
                 let y = index as u16;
                 if y < terminal_size.height {
-                    let visible_chars: String = line.iter().take(terminal_size.width as usize).collect();
+                    let visible_chars: String = line.chars().take(terminal_size.width as usize).collect();
                     queue!(
                         io::stdout(),
                         MoveTo(0, y),
@@ -143,7 +143,7 @@ impl Editor {
                     }
                     KeyCode::Char(c) => {
                         if view.buffer.lines.is_empty() {
-                            view.buffer.lines.push(Vec::new());
+                            view.buffer.lines.push(String::new());
                         }
                         let line = &mut view.buffer.lines[self.cursor_position.y as usize];
                         line.insert(self.cursor_position.x as usize, c);
@@ -153,9 +153,9 @@ impl Editor {
                     KeyCode::Enter => {
                         let current_line = view.buffer.lines[self.cursor_position.y as usize].clone();
                         let split_at = self.cursor_position.x as usize;
-                        let remaining_text: Vec<char> = current_line.into_iter().skip(split_at).collect();
+                        let remaining_text: Vec<char> = current_line.chars().skip(split_at).collect();
                         view.buffer.lines[self.cursor_position.y as usize].truncate(split_at);
-                        view.buffer.lines.push(remaining_text);
+                        view.buffer.lines.push(remaining_text.iter().cloned().collect::<String>());
                         self.cursor_position.y += 1;
                         self.cursor_position.x = 0;
                         view.needs_redraw = true;
