@@ -84,8 +84,9 @@ impl View {
             for (index, line) in self.buffer.lines.iter().enumerate() {
                 let y = index as u16;
                 if y < terminal_size.height {
-                    let end = std::cmp::min(line.len(), terminal_size.width as usize);
-                    let slice = &line[0..end];
+                    let char_limit = std::cmp::min(self.buffer.get_char_count(index) as usize, terminal_size.width as usize);
+                    let byte_end = self.buffer.get_byte_index(index, char_limit);
+                    let slice = &line[0..byte_end];
                     queue!(
                         io::stdout(),
                         MoveTo(0, y),
