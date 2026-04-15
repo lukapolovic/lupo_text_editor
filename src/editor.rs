@@ -72,33 +72,35 @@ impl View {
     }
 
     pub fn render(&mut self, terminal_size: Size, cursor_position: Position) -> io::Result<()> {
-        queue!(io::stdout(), Clear(ClearType::All), Hide)?;
+        if self.needs_redraw {
+            queue!(io::stdout(), Clear(ClearType::All), Hide)?;
 
-        for row in 0..terminal_size.height {
-            queue!(io::stdout(), MoveTo(0, row), Print("~"))?;
-        }
+            for row in 0..terminal_size.height {
+                queue!(io::stdout(), MoveTo(0, row), Print("~"))?;
+            }
 
-        if self.buffer.is_empty() {
-            self.draw_welcome_msg(terminal_size)?;
-        } else {
-            for (index, line) in self.buffer.lines.iter().enumerate() {
-                let y = index as u16;
-                if y < terminal_size.height {
-                    let char_limit = std::cmp::min(self.buffer.get_char_count(index) as usize, terminal_size.width as usize);
-                    let byte_end = self.buffer.get_byte_index(index, char_limit);
-                    let slice = &line[0..byte_end];
-                    queue!(
-                        io::stdout(),
-                        MoveTo(0, y),
-                        Print(slice)
-                    )?;
+            if self.buffer.is_empty() {
+                self.draw_welcome_msg(terminal_size)?;
+            } else {
+                for (index, line) in self.buffer.lines.iter().enumerate() {
+                    let y = index as u16;
+                    if y < terminal_size.height {
+                        let char_limit = std::cmp::min(self.buffer.get_char_count(index) as usize, terminal_size.width as usize);
+                        let byte_end = self.buffer.get_byte_index(index, char_limit);
+                        let slice = &line[0..byte_end];
+                        queue!(
+                            io::stdout(),
+                            MoveTo(0, y),
+                            Print(slice)
+                        )?;
+                    }
                 }
             }
+            self.needs_redraw = false;
         }
 
         queue!(io::stdout(), MoveTo(cursor_position.x, cursor_position.y), Show)?;
         io::stdout().flush()?;
-        self.needs_redraw = false;
         Ok(())
     }
 
