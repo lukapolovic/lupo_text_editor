@@ -186,7 +186,6 @@ impl Editor {
                                 self.cursor_position.x = line_len;
                             }
                         }
-                        view.needs_redraw = true;
                     }
                     KeyCode::Down => {
                         if self.cursor_position.y < (view.buffer.lines.len() as u16).saturating_sub(1) {
@@ -196,28 +195,23 @@ impl Editor {
                                 self.cursor_position.x = line_len;
                             }
                         }
-                        view.needs_redraw = true;
                     }
                     KeyCode::Left => {
                         if self.cursor_position.x > 0 {
                             self.cursor_position.x -= 1;
                         }
-                        view.needs_redraw = true;
                     }
                     KeyCode::Right => {
                         let line_len = view.buffer.lines[self.cursor_position.y as usize].len() as u16;
                         if self.cursor_position.x < line_len {
                             self.cursor_position.x += 1;
                         }
-                        view.needs_redraw = true;
                     }
                     _ => {}
                 }
             }
 
-            if view.needs_redraw {
-                view.render(terminal_size, self.cursor_position)?;
-            }
+            view.render(terminal_size, self.cursor_position)?;
 
             if self.should_quit {
                 break;
