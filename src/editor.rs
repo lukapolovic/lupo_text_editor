@@ -1,10 +1,63 @@
-use crossterm::cursor::{Hide, Show, MoveTo};
+use crossterm::cursor::{Hide, MoveTo, Show};
+use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use crossterm::queue;
 use crossterm::style::Print;
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearType};
-use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use crossterm::terminal::{
+    Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+    enable_raw_mode, size,
+};
 
 use std::io::{self, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static RAW_MODE_ENABLED: AtomicBool = AtomicBool::new(false);
+static ALTERNATE_SCREEN_ACTIVE: AtomicBool = AtomicBool::new(false);
+pub(crate) static TERMINAL_CLEANED_UP: AtomicBool = AtomicBool::new(false);
+
+struct TerminalGuard {
+    raw_mode_enabled: bool,
+    alternate_screen_active: bool,
+}
+
+impl TerminalGuard {
+    fn new() -> io::Result<Self> {
+        // Start with nothing enabled
+        let mut guard = Self {
+            raw_mode_enabled: false,
+            alternate_screen_active: false,
+        };
+
+        // Enable raw mode first
+        enable_raw_mode()?;
+        guard.raw_mode_enabled = true;
+        RAW_MODE_ENABLED.store(true, Ordering::SeqCst);
+
+        // Enter alternate screen
+        queue!(io::stdout(), EnterAlternateScreen)?;
+        guard.alternate_screen_active = true;
+        ALTERNATE_SCREEN_ACTIVE.store(true, Ordering::SeqCst);
+
+        TERMINAL_CLEANED_UP.store(false, Ordering::SeqCst);
+        Ok(guard)
+    }
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        if !TERMINAL_CLEANED_UP.swap(true, Ordering::SeqCst) {
+            // Clean up in reverse order
+            if self.alternate_screen_active {
+                let _ = queue!(io::stdout(), LeaveAlternateScreen, Show);
+                ALTERNATE_SCREEN_ACTIVE.store(false, Ordering::SeqCst);
+            }
+            if self.raw_mode_enabled {
+                let _ = disable_raw_mode();
+                RAW_MODE_ENABLED.store(false, Ordering::SeqCst);
+            }
+            let _ = io::stdout().flush();
+        }
+    }
+}
 
 #[derive(Debug, Copy, Clone)]
 pub struct Size {
@@ -32,10 +85,7 @@ impl Buffer {
 
     pub fn load(&mut self, filename: &str) -> io::Result<()> {
         let file_contents = std::fs::read_to_string(filename)?;
-        self.lines = file_contents
-            .lines()
-            .map(|s| s.to_string())
-            .collect();
+        self.lines = file_contents.lines().map(|s| s.to_string()).collect();
         Ok(())
     }
 
@@ -85,21 +135,24 @@ impl View {
                 for (index, line) in self.buffer.lines.iter().enumerate() {
                     let y = index as u16;
                     if y < terminal_size.height {
-                        let char_limit = std::cmp::min(self.buffer.get_char_count(index) as usize, terminal_size.width as usize);
+                        let char_limit = std::cmp::min(
+                            self.buffer.get_char_count(index) as usize,
+                            terminal_size.width as usize,
+                        );
                         let byte_end = self.buffer.get_byte_index(index, char_limit);
                         let slice = &line[0..byte_end];
-                        queue!(
-                            io::stdout(),
-                            MoveTo(0, y),
-                            Print(slice)
-                        )?;
+                        queue!(io::stdout(), MoveTo(0, y), Print(slice))?;
                     }
                 }
             }
             self.needs_redraw = false;
         }
 
-        queue!(io::stdout(), MoveTo(cursor_position.x, cursor_position.y), Show)?;
+        queue!(
+            io::stdout(),
+            MoveTo(cursor_position.x, cursor_position.y),
+            Show
+        )?;
         io::stdout().flush()?;
         Ok(())
     }
@@ -129,7 +182,7 @@ impl Editor {
     }
 
     pub fn run(&mut self) -> io::Result<()> {
-        enable_raw_mode()?;
+        let _guard = TerminalGuard::new()?;
         let args: Vec<String> = std::env::args().collect();
         let mut view = View::new();
 
@@ -162,18 +215,25 @@ impl Editor {
                         if view.buffer.lines.is_empty() {
                             view.buffer.lines.push(String::new());
                         }
-                        let byte_idx = view.buffer.get_byte_index(self.cursor_position.y as usize, self.cursor_position.x as usize);
+                        let byte_idx = view.buffer.get_byte_index(
+                            self.cursor_position.y as usize,
+                            self.cursor_position.x as usize,
+                        );
                         let line = &mut view.buffer.lines[self.cursor_position.y as usize];
                         line.insert(byte_idx, c);
                         self.cursor_position.x += 1;
                         view.needs_redraw = true;
                     }
                     KeyCode::Enter => {
-                        let current_line = view.buffer.lines[self.cursor_position.y as usize].clone();
+                        let current_line =
+                            view.buffer.lines[self.cursor_position.y as usize].clone();
                         let split_at = self.cursor_position.x as usize;
-                        let remaining_text: Vec<char> = current_line.chars().skip(split_at).collect();
+                        let remaining_text: Vec<char> =
+                            current_line.chars().skip(split_at).collect();
                         view.buffer.lines[self.cursor_position.y as usize].truncate(split_at);
-                        view.buffer.lines.push(remaining_text.iter().cloned().collect::<String>());
+                        view.buffer
+                            .lines
+                            .push(remaining_text.iter().cloned().collect::<String>());
                         self.cursor_position.y += 1;
                         self.cursor_position.x = 0;
                         view.needs_redraw = true;
@@ -181,16 +241,20 @@ impl Editor {
                     KeyCode::Up => {
                         if self.cursor_position.y > 0 {
                             self.cursor_position.y -= 1;
-                            let line_len = view.buffer.lines[self.cursor_position.y as usize].len() as u16;
+                            let line_len =
+                                view.buffer.lines[self.cursor_position.y as usize].len() as u16;
                             if self.cursor_position.x > line_len {
                                 self.cursor_position.x = line_len;
                             }
                         }
                     }
                     KeyCode::Down => {
-                        if self.cursor_position.y < (view.buffer.lines.len() as u16).saturating_sub(1) {
+                        if self.cursor_position.y
+                            < (view.buffer.lines.len() as u16).saturating_sub(1)
+                        {
                             self.cursor_position.y += 1;
-                            let line_len = view.buffer.lines[self.cursor_position.y as usize].len() as u16;
+                            let line_len =
+                                view.buffer.lines[self.cursor_position.y as usize].len() as u16;
                             if self.cursor_position.x > line_len {
                                 self.cursor_position.x = line_len;
                             }
@@ -202,7 +266,8 @@ impl Editor {
                         }
                     }
                     KeyCode::Right => {
-                        let line_len = view.buffer.lines[self.cursor_position.y as usize].len() as u16;
+                        let line_len =
+                            view.buffer.lines[self.cursor_position.y as usize].len() as u16;
                         if self.cursor_position.x < line_len {
                             self.cursor_position.x += 1;
                         }
@@ -218,7 +283,6 @@ impl Editor {
             }
         }
 
-        disable_raw_mode()?;
         Ok(())
     }
 }
